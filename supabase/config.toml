@@ -1,0 +1,6 @@
+project_id = "whatsapp-reminder-pro"
+
+# The database scheduler authenticates with a private bearer secret checked in code.
+# Disable the platform's user-JWT check for this machine-to-machine function only.
+[functions.dispatch-reminders]
+verify_jwt = false

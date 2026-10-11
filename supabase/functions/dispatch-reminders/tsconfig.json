@@ -1,0 +1,13 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "incremental": false,
+    "paths": {
+      "@/*": ["../../../*"],
+      "npm:@supabase/supabase-js@2.117.3": ["../../../node_modules/@supabase/supabase-js"]
+    }
+  },
+  "include": ["index.ts", "runtime.d.ts", "../_shared/reminder-worker.ts"],
+  "exclude": ["../../../node_modules"]
+}
