@@ -10,7 +10,7 @@
     "build": "tsc --noEmit && next build --webpack",
     "start": "next start",
     "lint": "eslint .",
-    "test": "node --experimental-strip-types --input-type=module -e \"await import('./tests.mjs')\""
+    "test": "node --experimental-strip-types --input-type=module -e \"await import('./tests.mjs'); await import('./lib/dispatch-policy.test.mjs')\""
   },
   "dependencies": {
     "@neondatabase/neon-js": "0.7.0-beta",
