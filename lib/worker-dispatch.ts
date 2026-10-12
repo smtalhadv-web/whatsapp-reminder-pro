@@ -101,7 +101,7 @@ export async function dispatchClaimedReminders(limit = 10) {
         // A network error may occur after Meta accepts the request.
         const decision = classifyMetaNetworkFailure();
         outcome = decision.outcome;
-        errorCode = decision.errorCode;
+        errorCode = decision.outcome === 'delivery_unknown' ? 'META_NETWORK_UNCERTAIN' : 'META_NETWORK_UNCERTAIN';
       }
       const finished = await db.query<{ updated: boolean }>(
         'SELECT public.finish_reminder_attempt($1,$2,$3,$4) AS updated',
