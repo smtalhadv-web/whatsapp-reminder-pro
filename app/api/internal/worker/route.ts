@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
+import { getWorkerReadiness } from '../../../../lib/worker-config';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,10 +24,12 @@ export async function POST(request: NextRequest) {
   if (!authorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const readiness = getWorkerReadiness();
   return NextResponse.json(
     {
       status: 'not_configured',
-      message: 'Automatic dispatch is disabled until the worker and WhatsApp provider are configured.',
+      message: 'Automatic dispatch remains disabled pending full worker implementation and provider verification.',
+      missing_configuration: readiness.missing,
       dispatched: 0,
     },
     { status: 503 },
