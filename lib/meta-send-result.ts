@@ -16,8 +16,10 @@ export function classifyMetaSendResponse(
   maxAttempts = 5,
 ): SendResult {
   if (status >= 200 && status < 300) {
-    const body = payload as { messages?: { id?: unknown }[] } | null;
-    const id = body?.messages?.[0]?.id;
+    const body = payload && typeof payload === 'object' ? payload as { messages?: unknown } : null;
+    const messages = Array.isArray(body?.messages) ? body.messages : [];
+    const first = messages[0];
+    const id = first && typeof first === 'object' ? (first as { id?: unknown }).id : undefined;
     return typeof id === 'string' && id.trim()
       ? { outcome: 'accepted', providerMessageId: id }
       : { outcome: 'delivery_unknown', errorCode: 'MISSING_PROVIDER_MESSAGE_ID' };
