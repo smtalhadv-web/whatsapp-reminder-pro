@@ -1,4 +1,3 @@
-import 'server-only';
 import { createRequire } from 'node:module';
 
 type QueryResult<T> = { rows: T[] };
