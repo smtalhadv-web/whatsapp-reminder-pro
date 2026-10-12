@@ -5,6 +5,7 @@ import { dispatchClaimedReminders } from '../../../../lib/worker-dispatch';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 function authorized(request: NextRequest): boolean {
   const secret = process.env.REMINDER_WORKER_SECRET;
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
         marked_delivery_unknown: Number(uncertain.rows[0]?.count ?? 0),
       };
     });
-    const dispatch = await dispatchClaimedReminders(10);
+    const dispatch = await dispatchClaimedReminders(1);
     return NextResponse.json({
       status: dispatch.enabled ? 'dispatch_processed' : 'queue_maintained',
       ...result,
