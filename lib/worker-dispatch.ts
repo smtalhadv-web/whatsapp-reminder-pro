@@ -108,6 +108,21 @@ export async function dispatchClaimedReminders(limit = 10) {
         [job.id, outcome, providerId, errorCode],
       );
       if (!finished.rows[0]?.updated) throw new Error('Failed to finalize claimed reminder run');
+      if (outcome === 'accepted' && providerId) {
+        await db.query(`
+          INSERT INTO public.message_logs (
+            business_id,reminder_id,reminder_run_id,recipient_phone,
+            mode,message,status,provider_message_id
+          )
+          SELECT r.business_id,r.id,$1,COALESCE(c.phone,r.phone),
+            'cloud',COALESCE(r.message,t.body,''),'accepted',$2
+          FROM public.reminders r
+          JOIN public.contacts c ON c.id=r.contact_id AND c.business_id=r.business_id
+          LEFT JOIN public.templates t ON t.id=r.template_id AND t.business_id=r.business_id
+          WHERE r.id=$3 AND r.business_id=$4
+          ON CONFLICT (provider_message_id) DO NOTHING
+        `, [job.id,providerId,job.reminder_id,job.business_id]);
+      }
       if (outcome === 'accepted') totals.accepted++;
       else if (outcome === 'retry_wait') totals.retrying++;
       else if (outcome === 'delivery_unknown') totals.uncertain++;
