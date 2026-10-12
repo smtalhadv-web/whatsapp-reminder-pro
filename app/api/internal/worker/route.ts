@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
 import { withWorkerDatabase } from '../../../../lib/worker-database';
+import { dispatchClaimedReminders } from '../../../../lib/worker-dispatch';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -40,11 +41,12 @@ export async function POST(request: NextRequest) {
         marked_delivery_unknown: Number(uncertain.rows[0]?.count ?? 0),
       };
     });
+    const dispatch = await dispatchClaimedReminders(10);
     return NextResponse.json({
-      status: 'queue_maintained',
+      status: dispatch.enabled ? 'dispatch_processed' : 'queue_maintained',
       ...result,
-      dispatched: 0,
-      message: 'Queue maintenance succeeded. Meta delivery worker is not enabled.',
+      dispatch,
+      dispatched: dispatch.accepted,
     });
   } catch (error) {
     console.error('Worker queue maintenance failed', error instanceof Error ? error.name : 'UnknownError');
