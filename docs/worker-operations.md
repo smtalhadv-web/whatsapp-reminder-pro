@@ -27,3 +27,6 @@
 
 ## Important operational caveat
 The dispatcher rechecks consent before sending, but delivery races, retries, and out-of-order webhook handling still need production-level verification. Do not use with paying customers until the Definition of Done is satisfied.
+
+## Infrastructure configured (2026-10-12)
+Production Vercel now has encrypted `NEON_DATABASE_URL`, `REMINDER_WORKER_SECRET`, `TOKEN_ENCRYPTION_KEY`, and `META_WEBHOOK_VERIFY_TOKEN`. Never commit their values. Meta App Secret and customer-owned WhatsApp credentials are not connected, and `WHATSAPP_SENDING_ENABLED` remains unset (OFF). A new production deployment is needed whenever environment variables are added or changed.
