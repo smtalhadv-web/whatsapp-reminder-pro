@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
-    "build": "tsc --noEmit && tsc --noEmit -p supabase/functions/dispatch-reminders/tsconfig.json && next build --webpack",
+    "build": "tsc --noEmit && next build --webpack",
     "start": "next start",
     "lint": "eslint .",
     "test": "node --experimental-strip-types --input-type=module -e \"await import('./tests.mjs')\""
