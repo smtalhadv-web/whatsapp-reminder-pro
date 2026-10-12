@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
-import { getWorkerReadiness } from '../../../../lib/worker-config';
+import { withWorkerDatabase } from '../../../../lib/worker-database';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,16 +24,32 @@ export async function POST(request: NextRequest) {
   if (!authorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const readiness = getWorkerReadiness();
-  return NextResponse.json(
-    {
-      status: 'not_configured',
-      message: 'Automatic dispatch remains disabled pending full worker implementation and provider verification.',
-      missing_configuration: readiness.missing,
+  if (!process.env.NEON_DATABASE_URL) {
+    return NextResponse.json({ status: 'not_configured', dispatched: 0 }, { status: 503 });
+  }
+  try {
+    const result = await withWorkerDatabase(async db => {
+      const enqueued = await db.query<{ count: number }>(
+        'SELECT public.enqueue_due_reminder_runs($1) AS count', [100],
+      );
+      const uncertain = await db.query<{ count: number }>(
+        'SELECT public.requeue_stale_reminder_runs($1, $2) AS count', [15, 50],
+      );
+      return {
+        queued: Number(enqueued.rows[0]?.count ?? 0),
+        marked_delivery_unknown: Number(uncertain.rows[0]?.count ?? 0),
+      };
+    });
+    return NextResponse.json({
+      status: 'queue_maintained',
+      ...result,
       dispatched: 0,
-    },
-    { status: 503 },
-  );
+      message: 'Queue maintenance succeeded. Meta delivery worker is not enabled.',
+    });
+  } catch (error) {
+    console.error('Worker queue maintenance failed', error instanceof Error ? error.name : 'UnknownError');
+    return NextResponse.json({ error: 'Queue maintenance failed', dispatched: 0 }, { status: 503 });
+  }
 }
 
 export async function GET() {
