@@ -1,5 +1,5 @@
 import { withWorkerDatabase } from './worker-database';
-import { classifyMetaNetworkFailure, classifyMetaSendResponse } from './meta-send-result';
+import { classifyMetaSendResponse } from './meta-send-result';
 import { decryptAccessToken, requestMetaTemplate, templateParameters } from '../supabase/functions/_shared/reminder-worker';
 
 type Job = {
@@ -99,9 +99,8 @@ export async function dispatchClaimedReminders(limit = 10) {
         }
       } catch {
         // A network error may occur after Meta accepts the request.
-        const decision = classifyMetaNetworkFailure();
-        outcome = decision.outcome;
-        errorCode = decision.outcome === 'delivery_unknown' ? 'META_NETWORK_UNCERTAIN' : 'META_NETWORK_UNCERTAIN';
+        outcome = 'delivery_unknown';
+        errorCode = 'META_NETWORK_UNCERTAIN';
       }
       const finished = await db.query<{ updated: boolean }>(
         'SELECT public.finish_reminder_attempt($1,$2,$3,$4) AS updated',
