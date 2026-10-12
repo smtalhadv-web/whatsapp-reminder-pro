@@ -1,63 +1,82 @@
 # WhatsApp Reminder Pro
 
-Mobile-first reminder dashboard and first module in WhatsApp Business Toolkit.
+WhatsApp Reminder Pro is the first standalone app in WhatsApp Business Toolkit. The product is intended to be free for businesses. Customers will own their Meta WhatsApp Business accounts and pay Meta directly for any applicable messaging fees. This repository does not collect card details or operator-funded messaging charges.
 
-## Current state
+## Current implementation status
 
-This repository contains a functional local preview: contacts, opt-out/consent fields, CSV import/export, workspace export, editable and deletable tenant-owned starter templates, reminder CRUD, pause/resume/cancel, recurrence selection, click-to-chat manual sending, honest message history, analytics from recorded records, dark mode, and mobile navigation. Without Supabase environment variables, it uses browser-local preview data and a visible warning. Do not use demo mode for real customer information.
+This is an active development build, not a production release. The responsive dashboard currently implements local-preview contacts, CSV import/export, consent and opt-out fields, template editing and previews, reminder CRUD and recurring options, manual click-to-chat links, message history, record-based analytics, light/dark mode, and mobile navigation. Local preview data is stored in the browser and must not be used for real customer information.
 
-Supabase Auth and tenant-backed CRUD are wired for a connected Supabase project. The SQL migration defines tenant tables, role memberships, RLS, encrypted-token columns, audit and message histories, unique reminder occurrence keys, and a durable scheduler queue. A private Edge Function dispatcher now claims work atomically, rechecks cancellation and consent, requires approved templates and a single active customer connection, decrypts customer-owned credentials, and calls the official Cloud API. Token encryption/decryption, bounded 429 retry handling, an ambiguous-delivery state, and early/out-of-order webhook status handling are covered by tests. The function and database migration have not been deployed or verified against a live Supabase project.
+The Neon project `whatsapp-reminder-pro` has Neon Auth and the Neon Data API provisioned. Versioned SQL migrations are in `neon/migrations`. The database includes tenant/business memberships, contacts and consent, templates, reminders, durable run records, message history, connection credential fields, RLS policies, tenant-scoped foreign keys, and privacy-safe audit triggers. The initial tenant isolation check was run against the live database with two synthetic tenants: each authenticated role read only its own contact, and an attempted cross-tenant update affected no rows. Temporary test rows were removed within the same transaction. The audit handling fixes for missing JWTs and business cascade deletion are in migrations `0004` and `0005`.
 
-Automated Cloud API sending remains disabled in the UI and the worker exits unless its private `WRP_ENABLE_CLOUD_SEND` secret is explicitly set to `true`. Do not enable it until a customer-owned Meta account, direct customer billing, Tech Provider/Embedded Signup approval, token onboarding, and a deployed worker are configured and verified. Meta may charge customers; this app does not charge a subscription or collect card details. Manual mode opens WhatsApp with a prefilled text and requires the user to send it; an opened link is never marked delivered.
+Neon Auth/Data API wiring exists in `lib/neon.ts` and the dashboard. The live Auth configuration currently has email verification disabled (`require_email_verification=false`), so email verification does not meet the product requirement yet. Registration, verification, reset/recovery, business provisioning, and real authenticated CRUD have not yet passed end-to-end tests. The installed Neon JavaScript SDK is a beta release, so this integration needs stability review before launch.
 
-## Local run
+The current webhook route and reminder worker still reference the former Supabase design. They are not connected to the Neon database and are not deployed. Background scheduling, automated Cloud API sending, Meta Embedded Signup, billing handoff, account deletion, live delivery webhooks, deployment, and production monitoring are incomplete. Cloud API sends are not enabled. Never represent a browser-local reminder as server-scheduled or a click-to-chat link opening as a sent message.
 
-1. Install the pinned dependencies with Node.js 22+.
-2. Copy `.env.example` to `.env.local` and provide Supabase project URL and publishable key only after creating the project.
-3. Apply the migration in `supabase/migrations` using the Supabase SQL editor or CLI after reviewing it.
-4. Set Auth email verification and the production redirect URLs in Supabase Auth.
-5. Run `npm run dev` and open `http://localhost:3000`.
+## Local development
 
-Without step 2, the app starts in local preview mode.
+Use Node.js 22 or newer.
 
-## Scheduling design
+```sh
+npm ci
+cp .env.example .env.local
+npm run dev
+```
 
-Vercel Hobby cron is not suitable for timely recurring reminders: its free-tier cron schedule is limited to daily. Supabase `pg_cron` can enqueue due reminders at minute intervals, and `claim_reminder_runs` uses row locks plus unique occurrence keys. The Edge Function retries explicit HTTP 429 rejections with bounded backoff. It does not retry network timeouts or ambiguous provider outcomes, which move to `delivery_unknown` to avoid duplicate sends. The enqueue/dispatch/reconciliation cron jobs are deliberately not activated; live recovery and scheduling have not been verified.
+Open `http://localhost:3000`. To use the configured Neon project, provide the public Neon Auth and Data API URLs listed in `.env.example`. Those URLs identify public service endpoints; database passwords, Meta secrets, and encryption keys must remain server-side and must never use a `NEXT_PUBLIC_` prefix. Do not use preview mode for customer data.
 
-## Deployments
+## Database migrations
 
-Vercel configuration is compatible with a Next.js deployment, but this app is intended for commercial SaaS use. Vercel Hobby is restricted to personal, non-commercial use; use a commercially permitted host/plan before a public commercial deployment. No deployment has been created. Add no secrets to Git. Configure environment values in the selected hosting dashboard.
+The versioned migrations live in `neon/migrations/`. Apply them in ascending order to the Neon `neondb` database using the Neon SQL editor or a properly protected migration runner. Review and back up before applying changes to a non-development database. The currently applied migrations are `202610120001` through `202610120005`; the source migration history is the deployment record. `0004` handles missing JWT claims for system-triggered audit events; `0005` avoids audit inserts when contact rows are deleted as part of business deletion.
 
-Source repository: https://github.com/smtalhadv-web/whatsapp-reminder-pro
+## Authentication and tenant security
 
-## Known release gates
+Neon Auth is provisioned with email/password support, and Neon Data API access is intended to use PostgreSQL grants and RLS. Tenant identity comes from the verified JWT `sub` claim via `private.current_user_id()`. `ensure_business()` creates a business for the authenticated user and seeds editable draft templates. Live tenant isolation was checked with synthetic JWT claims at the PostgreSQL role level. Browser signup, verification email delivery, password recovery, membership roles, business deletion, and browser-to-database RLS workflows still require end-to-end validation before public use.
 
-- The GitHub repository exists and is public. No deployment exists yet.
-- No Supabase project exists for Reminder Pro. The available organization is an account-level target; project creation requires explicit organization selection and cost confirmation under the connected setup flow.
-- Meta Embedded Signup requires the operator's Meta app and Tech Provider eligibility and has not been connected.
-- Direct customer billing arrangements must be verified before enabling Cloud API sends.
-- The Edge Function and queue claims are source code only: deployment, cron configuration, live retry/recovery checks, and operator monitoring remain release gates. Webhook credentials and end-to-end callback verification, Meta onboarding and token storage, account deletion, and production legal/retention policies also remain gates. Workspace export is implemented; account deletion is not. The webhook route verifies signatures and stores status updates but has not been configured or tested against Meta.
-- Local recurring reminders are stored and displayed; browser-local preview does not run reminders after the browser is closed.
+## Scheduling and WhatsApp
 
-## Local verification
+The browser is not a scheduler. The old Supabase Edge Function source is retained temporarily but is not suitable for the current Neon deployment. No durable worker or schedule is active. Do not rely on reminders executing when the browser is closed until a Neon-compatible durable queue/worker, retry and recovery behavior, and a closed-browser deployment test are implemented.
 
-Run `npm ci`, `npm test`, `npm run lint`, and `npm run build`. The build checks the Next.js app and separately type-checks the Edge Function using its Deno runtime declarations before creating the production bundle. Automated tests cover utility and timezone behavior, consent, template interpolation, mocked Cloud API payload creation, AES-GCM token encryption, retry policy, webhook signatures and race handling, audit structure, and migration structure. They do not replace database integration, auth, browser E2E, or live delivery tests. GitHub Actions is configured to run the same quality gates on pushes and pull requests.
+Manual mode creates a WhatsApp click-to-chat link with prefilled text and requires the user to press Send. Automated messaging must use Meta's official Cloud API, approved templates when required, consent and opt-out checks, customer-owned credentials and billing, signature-verified webhooks, idempotency, and delivery status reconciliation. None of the live sending/onboarding path is configured. Do not enable chargeable sends until Meta eligibility and customer billing are verified.
 
 ## Environment variables
 
-- `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: public project URL and publishable key for the browser client.
-- `SUPABASE_SERVICE_ROLE_KEY`: server-only key for verified Meta webhook updates; never use a `NEXT_PUBLIC_` prefix.
-- `TOKEN_ENCRYPTION_KEY`: server-only base64-encoded 32-byte AES-GCM key used by the token encryption helpers and worker. Store it only in Edge Function secrets; no OAuth onboarding route currently writes encrypted tokens.
-- `META_APP_ID`, `META_APP_SECRET`, `META_CONFIG_ID`, and `META_WEBHOOK_VERIFY_TOKEN`: Meta app/webhook configuration. These are not configured in this source tree.
-- Edge Function secrets: `REMINDER_WORKER_SECRET` (random bearer secret), `TOKEN_ENCRYPTION_KEY`, `META_GRAPH_API_VERSION`, and `WRP_ENABLE_CLOUD_SEND=false`. The Edge Function uses the Supabase-injected secret key. Keep the send flag false until external Meta and billing gates are met.
-- `PUBLIC_APP_URL`: canonical application URL for provider redirects once onboarding is implemented.
+| Variable | Purpose | Current handling |
+| --- | --- | --- |
+| `NEXT_PUBLIC_NEON_AUTH_URL` | Public Neon Auth endpoint | Set in `.env.example` |
+| `NEXT_PUBLIC_NEON_DATA_API_URL` | Public Neon Data API endpoint | Set in `.env.example` |
+| `NEON_DATABASE_URL` | Server-only PostgreSQL connection string for migrations/worker | Empty; do not commit a real value |
+| `NEON_AUTH_COOKIE_SECRET` | Secret for future server-side auth integration | Empty; not currently used |
+| `TOKEN_ENCRYPTION_KEY` | Server-only AES-GCM key for customer WhatsApp tokens | Empty; token onboarding is not implemented |
+| `META_APP_ID`, `META_APP_SECRET`, `META_CONFIG_ID` | Meta app and Embedded Signup configuration | Not configured |
+| `META_WEBHOOK_VERIFY_TOKEN` | Meta webhook challenge verification | Not configured |
+| `REMINDER_WORKER_SECRET` | Private worker authorization | Not configured |
+| `PUBLIC_APP_URL` | Canonical redirect and webhook origin | Local default only |
 
-Keep real values in local ignored `.env.local` and the hosting provider's encrypted environment settings. Never commit them.
+Put real values in ignored `.env.local` or encrypted hosting settings only. Never put database credentials or provider secrets in browser code, Git, screenshots, or logs.
 
-## Toolkit roadmap
+## Verification
 
-After Reminder Pro meets its release gates, the shared tenant, contact, consent, templates, messaging and audit foundations are intended to support WhatsApp Invoice & Receipt, Mini CRM, Order Manager, Form Builder, Booking Manager, and AI Receptionist modules. Those products are not implemented here.
+Run:
 
-## Security check status
+```sh
+npm test
+npm run lint
+npm run build
+```
 
-`npm audit --omit=dev --audit-level=high` was attempted but could not reach `registry.npmjs.org` in the restricted workspace (`connect EPERM`). Dependency advisories therefore remain unverified; rerun the command in an environment with registry access before release. The in-repo check does not establish that no high-severity dependency vulnerabilities exist.
+At the 2026-10-12 local checkpoint, `npm test` passed 27/27 tests, `npm run lint` passed, and `npm run build` exited successfully, including the app and legacy Edge Function TypeScript checks. Workspace inserts now retain database-returned IDs for contacts, reminders and templates, and CSV imports persist their generated contact IDs. Updates must return a tenant-filtered saved row before the UI reports success. Executable mocked regression tests cover contact-to-reminder identity, tenant-scoped updates and rejected writes. Existing tests cover utilities, consent, timezone/DST behavior, templating, mocked Meta payloads, webhook signature parsing, retry rules, and source-level worker/migration properties. They do not establish working authentication, deployed background execution, live Meta sending, or full browser workflows. Dependency security audit has not been verified because registry access was unavailable in the prior run; rerun `npm audit --omit=dev --audit-level=high` before release.
+
+## Deployment and costs
+
+The database is on the user's Neon Free project. Neon service quotas and limits can change; verify the current Neon plan and usage in the console before public launch. No paid infrastructure or Meta messaging was activated as part of this work. There is no Vercel deployment yet. Vercel Hobby is limited to personal, non-commercial use; use a commercially permitted host and plan for public commercial SaaS. Do not activate a paid plan without explicit approval.
+
+GitHub source repository: <https://github.com/smtalhadv-web/whatsapp-reminder-pro>
+
+## Roadmap
+
+1. Finish and test Neon authentication, business onboarding, tenant-backed CRUD, and password recovery.
+2. Migrate the webhook and implement a durable Neon-compatible reminder worker with idempotency, retries, cancellation, and recovery.
+3. Complete privacy workflows, rate limits, audit/security review, and responsive browser end-to-end tests.
+4. Implement official Meta Embedded Signup and customer billing handoff only after eligibility and billing are verified.
+5. Deploy to a commercially compliant host, test the live scheduled path with the browser closed, and document rollback and monitoring.
+6. After Reminder Pro meets its release gates, reuse the shared business, contact, consent, templates, messaging, scheduling, and audit foundations for Invoice & Receipt, Mini CRM, Order Manager, Form Builder, Booking Manager, and AI Receptionist.

@@ -13,6 +13,7 @@
     "test": "node --experimental-strip-types --input-type=module -e \"await import('./tests.mjs')\""
   },
   "dependencies": {
+    "@neondatabase/neon-js": "0.7.0-beta",
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "2.117.3",
     "lucide-react": "0.468.0",

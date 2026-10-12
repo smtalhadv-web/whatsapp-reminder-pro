@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { validPhone, renderTemplate, parseCsv, localTimeToInstant, instantToLocalInput, localDateKey } from './lib/format.ts';
 import { verifyMetaSignature, parseMetaStatusUpdates, toStoredMessageStatus } from './lib/meta-webhook.ts';
 import { canMessageContact } from './lib/consent.ts';
+import { writeWorkspaceRow } from './lib/workspace-write.ts';
 import { decryptAccessToken, decodeBytea, encryptAccessToken, requestMetaTemplate, retryDelayMs, shouldRetryProviderResponse, templateParameters } from './supabase/functions/_shared/reminder-worker.ts';
 const sql=fs.readFileSync('supabase/migrations/202610110001_whatsapp_reminder_pro.sql','utf8');
 const app=fs.readFileSync('components/dashboard.tsx','utf8');
@@ -12,6 +13,31 @@ const css=fs.readFileSync('app/globals.css','utf8');
 const worker=fs.readFileSync('supabase/functions/dispatch-reminders/index.ts','utf8');
 const workerConfig=fs.readFileSync('supabase/config.toml','utf8');
 const webhookRoute=fs.readFileSync('app/api/whatsapp/webhook/route.ts','utf8');
+function mockWorkspaceWriter(result) {
+  const calls=[];
+  const query={eq:(...args)=>{calls.push(['eq',...args]);return query},select:(columns)=>{calls.push(['select',columns]);return query},single:async()=>result};
+  return {calls,client:{from:(table)=>({insert:(payload)=>{calls.push(['insert',table,payload]);return query},update:(payload)=>{calls.push(['update',table,payload]);return query}})}};
+}
+test('new workspace records use database-returned IDs in subsequent relationships',async()=>{
+  const contact=mockWorkspaceWriter({data:{id:'saved-contact'},error:null});
+  const contactId=await writeWorkspaceRow(contact.client,'contacts','tenant-a',{name:'Amina'});
+  assert.equal(contactId,'saved-contact');
+  assert.deepEqual(contact.calls[0],['insert','contacts',{name:'Amina',business_id:'tenant-a'}]);
+  const reminder=mockWorkspaceWriter({data:{id:'saved-reminder'},error:null});
+  assert.equal(await writeWorkspaceRow(reminder.client,'reminders','tenant-a',{contact_id:contactId}),'saved-reminder');
+  assert.equal(reminder.calls[0][2].contact_id,'saved-contact');
+});
+test('workspace updates filter tenant and require an actually returned row',async()=>{
+  const mock=mockWorkspaceWriter({data:{id:'saved-template'},error:null});
+  assert.equal(await writeWorkspaceRow(mock.client,'templates','tenant-a',{body:'Updated'},'saved-template'),'saved-template');
+  assert.deepEqual(mock.calls.slice(1),[['eq','id','saved-template'],['eq','business_id','tenant-a'],['select','id']]);
+  const hidden=mockWorkspaceWriter({data:null,error:null});
+  await assert.rejects(()=>writeWorkspaceRow(hidden.client,'contacts','tenant-a',{},'tenant-b-contact'),/not returned/);
+});
+test('database errors are not treated as successful workspace saves',async()=>{
+  const mock=mockWorkspaceWriter({data:null,error:{message:'Permission denied'}});
+  await assert.rejects(()=>writeWorkspaceRow(mock.client,'contacts','tenant-a',{}),/Permission denied/);
+});
 test('E.164 validation accepts international numbers only',()=>{assert.equal(validPhone('+923001234567'),true);assert.equal(validPhone('03001234567'),false);assert.equal(validPhone('+0123456789'),false)});
 test('template rendering replaces known values and preserves unknown placeholders',()=>{assert.equal(renderTemplate('Hi {{customer_name}} {{amount}}',{customer_name:'Amina'}),'Hi Amina {{amount}}')});
 test('CSV parser supports quoted delimiters and escaped quotes',()=>{assert.deepEqual(parseCsv('name,notes\r\nAmina,"calls, evenings"\r\nBilal,"said ""hello"""'),[['name','notes'],['Amina','calls, evenings'],['Bilal','said "hello"']])});
@@ -34,3 +60,16 @@ test('WhatsApp access tokens use AES-GCM and PostgreSQL bytea encoding',async()=
 test('mocked Cloud API adapter sends only an approved-template payload shape',async()=>{let seen;const response=await requestMetaTemplate({apiVersion:'v99.0',phoneNumberId:'phone-id',accessToken:'secret-token',recipient:'+923001234567',templateName:'appointment_reminder',language:'en',parameters:['Amina','Oct 12']},async(url,init)=>{seen={url,init};return new Response(JSON.stringify({messages:[{id:'wamid.mock'}]}),{status:200,headers:{'content-type':'application/json'}})});assert.equal(response.status,200);assert.equal(seen.url,'https://graph.facebook.com/v99.0/phone-id/messages');assert.equal(seen.init.headers.authorization,'Bearer secret-token');const body=JSON.parse(seen.init.body);assert.equal(body.messaging_product,'whatsapp');assert.equal(body.type,'template');assert.equal(body.template.name,'appointment_reminder');assert.deepEqual(body.template.components[0].parameters.map(p=>p.text),['Amina','Oct 12'])});
 test('durable worker claims server-side, rechecks opt-outs, stays disabled, and reconciles interrupted sends',()=>{assert.match(sql,/create or replace function public\.claim_reminder_runs\(batch_size integer default 25\)/);assert.match(sql,/grant execute on function public\.claim_reminder_runs\(integer\) to service_role/);assert.match(sql,/status='delivery_unknown'/);assert.match(worker,/WRP_ENABLE_CLOUD_SEND/);assert.match(worker,/delivery_uncertain/);assert.match(worker,/Recipient consent could not be verified immediately before delivery/);assert.match(workerConfig,/verify_jwt = false/);assert.match(app,/Cloud API sending is disabled until a customer-owned Meta connection and billing are verified/)});
 test('webhook statuses survive arrival before the message row is inserted',()=>{assert.match(sql,/create table public\.provider_status_events/);assert.match(sql,/create trigger apply_pending_provider_status after insert on public\.message_logs/);assert.match(sql,/create trigger capture_provider_status_event after insert on public\.provider_status_events/);assert.match(sql,/order by case status when 'read' then 5/);assert.match(webhookRoute,/provider_status_events/)});
+
+import { csvCell, serializeCsv } from './lib/csv.ts';
+test('CSV export neutralizes formula prefixes, including international phone numbers',()=>{
+  for(const value of ['=1+1','+923001234567','-1+1','@SUM(A1)','  =1+1','\t=1+1','\r=1+1','\n=1+1','\uFEFF=1+1']) {
+    assert.equal(parseCsv(serializeCsv([[value]]))[0][0],`'${value}`);
+  }
+});
+test('CSV export preserves ordinary text, quotes, delimiters and multiline notes',()=>{
+  const rows=[['name','notes'],['Amina','said "hello", today\nCall tomorrow'],['Bilal','No formula']];
+  assert.deepEqual(parseCsv(serializeCsv(rows)),rows);
+  assert.equal(csvCell(null),'""');
+  assert.equal(csvCell(false),'"false"');
+});
