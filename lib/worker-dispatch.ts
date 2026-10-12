@@ -90,8 +90,12 @@ export async function dispatchClaimedReminders(limit = 10) {
           const body: unknown = await response.json().catch(() => null);
           const decision = classifyMetaSendResponse(response.status, body, job.attempt_count);
           outcome = decision.outcome;
-          errorCode = 'errorCode' in decision ? decision.errorCode : null;
-          providerId = 'providerMessageId' in decision ? decision.providerMessageId : null;
+          if (decision.outcome === 'accepted') {
+            providerId = decision.providerMessageId;
+            errorCode = null;
+          } else {
+            errorCode = decision.errorCode;
+          }
         }
       } catch {
         // A network error may occur after Meta accepts the request.
