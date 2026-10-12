@@ -1,4 +1,4 @@
-import { evaluateDispatch, type DispatchContact, type DispatchReminder } from './dispatch-policy';
+import { evaluateDispatch, type DispatchContact, type DispatchReminder } from './dispatch-policy.ts';
 
 export type DispatchCandidate = {
   id: string;
