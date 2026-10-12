@@ -1,0 +1,3 @@
+-- Applied in Neon: record_meta_delivery_status(text,text,bigint,text).
+-- This migration placeholder must be replaced with the verified function definition before rebuilding a fresh database.
+-- See docs/meta-delivery-status.md.
