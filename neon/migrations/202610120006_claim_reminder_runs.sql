@@ -39,7 +39,7 @@ BEGIN
 END;
 $$;
 
--- Do not allow browser roles to invoke a worker claim function.
+-- Do not allow authenticated browser users to invoke a worker claim function.
+-- Neon projects may not have an anon role; PUBLIC revocation covers any such role.
 REVOKE ALL ON FUNCTION public.claim_reminder_runs(integer) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.claim_reminder_runs(integer) FROM anon;
 REVOKE ALL ON FUNCTION public.claim_reminder_runs(integer) FROM authenticated;
